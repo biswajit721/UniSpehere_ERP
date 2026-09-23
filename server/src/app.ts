@@ -33,7 +33,7 @@ import usersRoutes from "./modules/users/users.routes";
 
 const app = express();
 
-// Enable reverse proxy trust so Express recognizes Render's HTTPS headers
+// Required on Render so Express detects HTTPS behind the reverse proxy
 app.set("trust proxy", 1);
 
 app.use(helmet());
