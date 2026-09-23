@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================================
+   Design tokens. Values are "R G B" triplets so Tailwind can add opacity (see tailwind.config.js).
+
+   Contrast (WCAG AA, 4.5:1 for text) - measured against the surface each token is used on:
+     light   ink on card 17.8   ink-2 on card 7.6 / on bg 6.9   primary-fg on card 6.7
+             success-fg 5.0     warning-fg 5.2     danger-fg 6.5   white on every FILL >= 4.8
+     dark    ink on card 15.6   ink-2 on card 7.0                 primary-fg on card 6.3
+             success-fg 9.6     warning-fg 10.9    danger-fg 5.9
+   ========================================================================================== */
+:root {
+  color-scheme: light;
+
+  --bg: 243 245 249;
+  --card: 255 255 255;
+  --raised: 255 255 255;
+  --line: 219 226 236;
+  --line-strong: 190 201 217;
+  --ink: 15 23 42;
+  --ink-2: 71 85 105;
+  --ink-3: 86 100 121;
+
+  --primary: 37 99 235;
+  --primary-strong: 29 78 216;
+  --primary-fg: 29 78 216;
+  --primary-soft: 235 242 255;
+
+  --success: 21 128 61;
+  --success-fg: 21 128 61;
+  --success-soft: 240 250 244;
+  --warning: 180 83 9;
+  --warning-fg: 161 72 6;
+  --warning-soft: 254 244 226;
+  --danger: 220 38 38;
+  --danger-fg: 185 28 28;
+  --danger-soft: 254 236 236;
+  --info: 14 116 144;
+  --info-fg: 14 116 144;
+  --info-soft: 224 246 250;
+
+  --shadow: 15 23 42;
+
+  /* module accents (icons) */
+  --m-dashboard: 79 70 229; --m-students: 37 99 235; --m-faculty: 124 58 237; --m-academics: 8 145 178;
+  --m-attendance: 22 163 74; --m-timetable: 234 88 12; --m-examination: 220 38 38; --m-results: 5 150 105;
+  --m-assignments: 124 58 237; --m-fees: 217 119 6; --m-library: 146 64 14; --m-hostel: 15 118 110;
+  --m-placement: 22 163 74; --m-notices: 37 99 235; --m-notifications: 219 39 119; --m-grievance: 225 29 72;
+  --m-administration: 51 65 85; --m-settings: 107 114 128; --m-analytics: 79 70 229; --m-reports: 8 145 178;
+  --m-idcard: 124 58 237;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --bg: 10 16 30;
+  --card: 20 29 47;
+  --raised: 28 39 62;
+  --line: 44 58 84;
+  --line-strong: 66 82 112;
+  --ink: 238 242 248;
+  --ink-2: 160 174 196;
+  --ink-3: 136 151 176;
+
+  --primary: 37 99 235;
+  --primary-strong: 29 78 216;
+  --primary-fg: 120 168 250;
+  --primary-soft: 22 36 72;
+
+  --success: 21 128 61;
+  --success-fg: 74 222 128;
+  --success-soft: 15 46 33;
+  --warning: 180 83 9;
+  --warning-fg: 251 191 36;
+  --warning-soft: 56 40 12;
+  --danger: 220 38 38;
+  --danger-fg: 248 113 113;
+  --danger-soft: 62 22 28;
+  --info: 14 116 144;
+  --info-fg: 34 211 238;
+  --info-soft: 10 46 56;
+
+  --shadow: 0 0 0;
+
+  --m-dashboard: 129 140 248; --m-students: 96 165 250; --m-faculty: 167 139 250; --m-academics: 34 211 238;
+  --m-attendance: 74 222 128; --m-timetable: 251 146 60; --m-examination: 248 113 113; --m-results: 52 211 153;
+  --m-assignments: 167 139 250; --m-fees: 251 191 36; --m-library: 217 160 90; --m-hostel: 45 212 191;
+  --m-placement: 74 222 128; --m-notices: 96 165 250; --m-notifications: 244 114 182; --m-grievance: 251 113 133;
+  --m-administration: 148 163 184; --m-settings: 156 163 175; --m-analytics: 129 140 248; --m-reports: 34 211 238;
+  --m-idcard: 167 139 250;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: env(safe-area-inset-top, 0px);
+  }
+  body {
+    @apply bg-surface text-text-primary font-sans antialiased;
+    min-height: 100dvh;
+    font-feature-settings: "cv11", "ss03";
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* visible keyboard focus everywhere, without ugly rings on mouse click */
+  :focus-visible {
+    outline: 2px solid rgb(var(--primary-fg));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection {
+    background: rgb(var(--primary) / 0.28);
+  }
+  /* numbers that change live (counters, percentages) must not jiggle */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="checkbox"] {
+    accent-color: rgb(var(--primary));
+  }
+  /* thin, theme-aware scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line-strong)) transparent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-card border border-border rounded-card shadow-card;
+  }
+
+  /* ---------- buttons (44px touch target on small screens) ---------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors
+      select-none min-h-11 sm:min-h-10 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white
+      transition-colors select-none min-h-11 sm:min-h-10 hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply btn border border-border-strong bg-surface-card text-text-primary hover:bg-surface;
+  }
+  .btn-ghost {
+    @apply btn text-text-secondary hover:bg-surface hover:text-text-primary;
+  }
+  .btn-danger {
+    @apply btn bg-danger text-white hover:brightness-110;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs min-h-9 sm:min-h-8;
+  }
+
+  /* ---------- form controls ---------- */
+  .input-field {
+    @apply w-full rounded-lg border border-border-strong bg-surface-card px-3.5 py-2.5 text-sm text-text-primary
+      min-h-11 sm:min-h-10 placeholder:text-text-muted transition-colors
+      focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary
+      disabled:cursor-not-allowed disabled:bg-surface disabled:text-text-muted disabled:opacity-80;
+  }
+  select.input-field {
+    @apply pr-9 appearance-none bg-no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5l5 5 5-5' stroke='%2394A3B8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  .field-label {
+    @apply mb-1.5 block text-xs font-medium text-text-secondary;
+  }
+
+  /* ---------- badges ---------- */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-neutral { @apply badge bg-surface text-text-secondary border border-border; }
+  .badge-primary { @apply badge bg-primary/10 text-primary; }
+  .badge-success { @apply badge bg-success-soft text-success; }
+  .badge-warning { @apply badge bg-warning-soft text-warning; }
+  .badge-danger { @apply badge bg-danger-soft text-danger; }
+  .badge-info { @apply badge bg-info-soft text-info; }
+
+  /* ---------- data tables ---------- */
+  .table-base {
+    @apply w-full text-sm;
+  }
+  .table-base thead th {
+    @apply bg-surface px-4 py-2.5 text-left text-xs font-semibold text-text-secondary whitespace-nowrap;
+  }
+  .table-base tbody td {
+    @apply px-4 py-3 border-t border-border align-middle;
+  }
+  .table-base tbody tr {
+    @apply transition-colors hover:bg-surface/70;
+  }
+}
+
+/* A focused task with a sticky action bar (marking attendance) owns the phone screen: the floating assistant
+   button would sit on top of the student rows and the Submit button, so it steps aside there. */
+@media (max-width: 639px) {
+  html[data-sticky-bar] .chat-launcher {
+    display: none;
+  }
+}
+
+@layer utilities {
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+}

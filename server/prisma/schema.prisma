@@ -1,0 +1,1056 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// AUTH & RBAC
+// ============================================================
+
+model User {
+  id                   String    @id @default(uuid())
+  universityId         String    @unique // e.g. STU2025001, FAC2025010, ADM001
+  email                String    @unique
+  passwordHash         String
+  firstName            String
+  lastName             String
+  phone                String?
+  profilePhoto         String?
+  role                 Role      @relation(fields: [roleId], references: [id])
+  roleId               String
+  isActive             Boolean   @default(true)
+  mustResetPassword    Boolean   @default(true) // true on admin-created accounts
+  lastLoginAt          DateTime?
+  dateOfBirth          DateTime?
+  gender               String?
+  address              String?
+  bio                  String?
+  profilePhotoPublicId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
+
+  student                     Student?
+  faculty                     Faculty?
+  refreshTokens               RefreshToken[]
+  loginActivity               LoginActivity[]
+  auditLogs                   AuditLog[]
+  noticesPosted               Notice[]
+  notifications               Notification[]
+  leaveRequestsMade           LeaveRequest[]             @relation("LeaveApplicant")
+  leaveRequestsDecided        LeaveRequest[]             @relation("LeaveDecider")
+  complaintsRaised            Complaint[]
+  documents                   Document[]
+  attendanceEdits             AttendanceEdit[]
+  attendanceSessionsRecorded  AttendanceSession[]        @relation("AttendanceRecordedBy")
+  attendanceSessionsCancelled AttendanceSession[]        @relation("AttendanceCancelledBy")
+  attendanceRecordsMarked     AttendanceRecord[]         @relation("AttendanceMarkedBy")
+  enrollmentsCreated          StudentEnrollment[]        @relation("EnrollmentCreatedBy")
+  facultyAssignmentsMade      FacultySubjectAssignment[] @relation("AssignmentCreatedBy")
+  passwordResetOtps           PasswordResetOtp[]
+
+  @@index([roleId])
+  @@index([email])
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        String       @unique // SUPER_ADMIN, UNIV_ADMIN, HOD, FACULTY, STUDENT, EXAM_CONTROLLER, ACCOUNTANT, LIBRARIAN, HOSTEL_WARDEN, PLACEMENT_OFFICER
+  description String?
+  users       User[]
+  permissions Permission[]
+  createdAt   DateTime     @default(now())
+}
+
+model Permission {
+  id     String @id @default(uuid())
+  module String // "students", "attendance", "fees", "examination", ...
+  action String // "create", "read", "update", "delete", "approve", "publish"
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId String
+
+  @@unique([module, action, roleId])
+  @@index([roleId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model LoginActivity {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  ipAddress String?
+  userAgent String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  action    String // "CREATE", "UPDATE", "DELETE", "APPROVE", "LOGIN", ...
+  module    String
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([module, createdAt])
+}
+
+// ============================================================
+// ORGANIZATION HIERARCHY
+// ============================================================
+
+model Department {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  code      String    @unique // "CSE", "MCA", "ECE"
+  hodId     String?   @unique
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  programs           Program[]
+  faculty            Faculty[]
+  students           Student[]
+  subjects           Subject[]
+  eligibleDrives     PlacementDrive[]
+  enrollments        StudentEnrollment[]
+  attendanceSessions AttendanceSession[]
+}
+
+model Program {
+  id            String     @id @default(uuid())
+  name          String // "MCA", "B.Tech CSE"
+  department    Department @relation(fields: [departmentId], references: [id])
+  departmentId  String
+  durationYears Int
+  createdAt     DateTime   @default(now())
+
+  batches            Batch[]
+  students           Student[]
+  semesters          Semester[]
+  subjects           Subject[]
+  enrollments        StudentEnrollment[]
+  attendanceSessions AttendanceSession[]
+
+  @@unique([name, departmentId])
+}
+
+model Batch {
+  id        String   @id @default(uuid())
+  program   Program  @relation(fields: [programId], references: [id])
+  programId String
+  startYear Int
+  endYear   Int
+  label     String // "2025-2027"
+  createdAt DateTime @default(now())
+
+  sections    Section[]
+  students    Student[]
+  enrollments StudentEnrollment[]
+}
+
+model Section {
+  id        String   @id @default(uuid())
+  batch     Batch    @relation(fields: [batchId], references: [id])
+  batchId   String
+  name      String // "A", "B"
+  createdAt DateTime @default(now())
+
+  students             Student[]
+  timetableSlots       TimetableSlot[]
+  attendanceSessions   AttendanceSession[]
+  enrollments          StudentEnrollment[]
+  facultyAssignments   FacultySubjectAssignment[]
+  attendanceSlots      AttendanceSlot[]
+  subjectRegistrations StudentSubjectRegistration[]
+
+  @@unique([batchId, name])
+}
+
+// ============================================================
+// STUDENT & FACULTY PROFILES
+// ============================================================
+
+model Student {
+  id              String     @id @default(uuid())
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String     @unique
+  rollNumber      String     @unique
+  department      Department @relation(fields: [departmentId], references: [id])
+  departmentId    String
+  program         Program    @relation(fields: [programId], references: [id])
+  programId       String
+  batch           Batch      @relation(fields: [batchId], references: [id])
+  batchId         String
+  section         Section?   @relation(fields: [sectionId], references: [id])
+  sectionId       String?
+  currentSemester Int        @default(1)
+  advisorId       String? // Faculty.id
+  dateOfBirth     DateTime?
+  gender          String?
+  address         String?
+  cgpa            Decimal?   @db.Decimal(4, 2)
+
+  // ---- Stable master-profile data (does not change per semester) ----
+  registrationNumber String? @unique // official university registration no., e.g. GIET202400123
+  admissionYear      Int? // year of the FIRST admission
+  guardianName       String?
+  guardianPhone      String?
+  guardianRelation   String?
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  // NOTE: departmentId / programId / batchId / sectionId / currentSemester above are a
+  // read-only MIRROR of the student's current open StudentEnrollment. They are written
+  // only by the enrollments service so older modules keep working. The source of truth
+  // for academic placement and attendance is StudentEnrollment.
+  enrollments       StudentEnrollment[]
+  attendanceRecords AttendanceRecord[]
+  marks             Marks[]
+  fees              Fee[]
+  bookIssues        BookIssue[]
+  applications      Application[]
+  roomAllocations   RoomAllocation[]
+
+  @@index([departmentId, batchId])
+}
+
+model Faculty {
+  id            String     @id @default(uuid())
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String     @unique
+  employeeId    String     @unique
+  department    Department @relation(fields: [departmentId], references: [id])
+  departmentId  String
+  designation   String // "Assistant Professor", "HOD", "Professor"
+  qualification String?
+  experienceYrs Int?
+  joinedAt      DateTime?
+  createdAt     DateTime   @default(now())
+  deletedAt     DateTime?
+
+  subjects           Subject[]
+  marksEntered       Marks[]
+  timetableSlots     TimetableSlot[]
+  assignments        FacultySubjectAssignment[]
+  attendanceSessions AttendanceSession[]
+
+  @@index([departmentId])
+}
+
+// ============================================================
+// ACADEMICS
+// ============================================================
+
+enum SubjectType {
+  THEORY
+  PRACTICAL
+}
+
+model Subject {
+  id           String      @id @default(uuid())
+  name         String
+  code         String      @unique
+  credits      Int
+  semester     Int
+  type         SubjectType @default(THEORY)
+  department   Department  @relation(fields: [departmentId], references: [id])
+  departmentId String
+  faculty      Faculty?    @relation(fields: [facultyId], references: [id]) // default / coordinating faculty
+  facultyId    String?
+  // Academic-structure links. Nullable so existing rows survive the migration; the
+  // backfill script fills them and the API requires them for every new subject.
+  program      Program?    @relation(fields: [programId], references: [id])
+  programId    String?
+  semesterRef  Semester?   @relation(fields: [semesterId], references: [id])
+  semesterId   String?
+  isElective   Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  deletedAt    DateTime?
+
+  attendanceSessions   AttendanceSession[]
+  exams                Exam[]
+  timetableSlots       TimetableSlot[]
+  facultyAssignments   FacultySubjectAssignment[]
+  attendanceSlots      AttendanceSlot[]
+  subjectRegistrations StudentSubjectRegistration[]
+
+  @@index([departmentId, semester])
+  @@index([programId, semesterId])
+}
+
+// ============================================================
+// ATTENDANCE
+// ============================================================
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model AcademicSession {
+  id        String    @id @default(uuid())
+  label     String    @unique // "2025-2026"
+  startYear Int
+  endYear   Int
+  startDate DateTime? @db.Date // first day of the session (attendance dates must fall inside)
+  endDate   DateTime? @db.Date // last day of the session
+  isCurrent Boolean   @default(false) // highlighted in the UI - never silently pre-selected
+  isActive  Boolean   @default(true) // inactive sessions cannot receive new enrollments/attendance
+  createdAt DateTime  @default(now())
+
+  attendanceSessions AttendanceSession[]
+  enrollments        StudentEnrollment[]
+  facultyAssignments FacultySubjectAssignment[]
+}
+
+/// A semester of a specific program ("Semester 3 of MCA"). Subjects, enrollments and
+/// attendance reference this row by id instead of comparing a bare number.
+model Semester {
+  id        String   @id @default(uuid())
+  program   Program  @relation(fields: [programId], references: [id])
+  programId String
+  number    Int
+  name      String // "Semester 3"
+  createdAt DateTime @default(now())
+
+  subjects           Subject[]
+  enrollments        StudentEnrollment[]
+  attendanceSessions AttendanceSession[]
+
+  @@unique([programId, number])
+}
+
+/// The university period grid ("Period 2 = 09:00-10:00"). The attendance form reads
+/// its period list from here, and timetable slots are matched against it.
+model PeriodDefinition {
+  id        String   @id @default(uuid())
+  number    Int      @unique
+  label     String?
+  startTime String // "09:00"
+  endTime   String // "10:00"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+// ============================================================
+// STUDENT ENROLLMENT (admission / readmission / promotion history)
+// ============================================================
+
+enum EnrollmentType {
+  REGULAR // first admission into the program
+  LATERAL // lateral entry directly into a later semester
+  PROMOTION // progressed to the next semester
+  READMISSION // returned after a break / detention
+  REPEAT // repeating a semester
+  TRANSFER // section / batch / program change
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PROMOTED
+  COMPLETED
+  REPEATED
+  DETAINED
+  DEFERRED
+  WITHDRAWN
+  TRANSFERRED
+}
+
+enum ReadmissionReason {
+  BACKLOG
+  ACADEMIC_REPEAT
+  OTHER
+}
+
+/// One row per (student, academic session, semester, section) placement. Rows are never
+/// overwritten: promotion, readmission and section changes close the current row and
+/// open a new one, so attendance always points at the placement that was true at the time.
+model StudentEnrollment {
+  id                   String              @id @default(uuid())
+  student              Student             @relation(fields: [studentId], references: [id])
+  studentId            String
+  academicSession      AcademicSession     @relation(fields: [academicSessionId], references: [id])
+  academicSessionId    String
+  department           Department          @relation(fields: [departmentId], references: [id])
+  departmentId         String
+  program              Program             @relation(fields: [programId], references: [id])
+  programId            String
+  batch                Batch               @relation(fields: [batchId], references: [id])
+  batchId              String
+  semester             Semester            @relation(fields: [semesterId], references: [id])
+  semesterId           String
+  section              Section?            @relation(fields: [sectionId], references: [id])
+  sectionId            String?
+  admissionYear        Int // year of this admission event (the readmission year for READMISSION/REPEAT)
+  admissionDate        DateTime            @db.Date // date this placement takes effect
+  endDate              DateTime?           @db.Date // null while this is the student's open enrollment
+  enrollmentType       EnrollmentType      @default(REGULAR)
+  status               EnrollmentStatus    @default(ACTIVE)
+  readmissionReason    ReadmissionReason?
+  reasonNote           String?
+  previousEnrollment   StudentEnrollment?  @relation("EnrollmentChain", fields: [previousEnrollmentId], references: [id])
+  previousEnrollmentId String?
+  nextEnrollments      StudentEnrollment[] @relation("EnrollmentChain")
+  createdBy            User?               @relation("EnrollmentCreatedBy", fields: [createdById], references: [id])
+  createdById          String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @default(now()) @updatedAt
+
+  attendanceRecords    AttendanceRecord[]
+  subjectRegistrations StudentSubjectRegistration[]
+  // A partial unique index ("one open enrollment per student") is created by
+  // src/config/dbInvariants.ts because Prisma cannot express partial indexes.
+
+  // Roster lookups: "who is enrolled in session X / semester Y / section Z on date D"
+  @@index([academicSessionId, semesterId, sectionId])
+  @@index([studentId, endDate])
+  @@index([programId, batchId])
+  @@index([departmentId, academicSessionId])
+}
+
+enum SubjectRegistrationType {
+  BACKLOG // re-attending a subject from an earlier semester
+  ELECTIVE // student-chosen subject that only some students of a section take
+}
+
+/// Lets a student attend a class outside their own semester/section (backlog) or take an
+/// elective, while attendance is still tied to their own enrollment.
+model StudentSubjectRegistration {
+  id                String                  @id @default(uuid())
+  enrollment        StudentEnrollment       @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  enrollmentId      String
+  subject           Subject                 @relation(fields: [subjectId], references: [id])
+  subjectId         String
+  section           Section                 @relation(fields: [sectionId], references: [id])
+  sectionId         String // the section whose class the student attends for this subject
+  academicSessionId String
+  type              SubjectRegistrationType
+  createdAt         DateTime                @default(now())
+
+  @@unique([enrollmentId, subjectId])
+  @@index([subjectId, sectionId, academicSessionId])
+}
+
+/// Who teaches which subject to which section in which academic session. A section-level
+/// assignment overrides the subject's default faculty (Subject.facultyId).
+model FacultySubjectAssignment {
+  id                String          @id @default(uuid())
+  academicSession   AcademicSession @relation(fields: [academicSessionId], references: [id])
+  academicSessionId String
+  subject           Subject         @relation(fields: [subjectId], references: [id])
+  subjectId         String
+  section           Section         @relation(fields: [sectionId], references: [id])
+  sectionId         String
+  faculty           Faculty         @relation(fields: [facultyId], references: [id])
+  facultyId         String
+  createdBy         User?           @relation("AssignmentCreatedBy", fields: [createdById], references: [id])
+  createdById       String?
+  createdAt         DateTime        @default(now())
+
+  @@unique([academicSessionId, subjectId, sectionId, facultyId])
+  @@index([facultyId, academicSessionId])
+  @@index([sectionId, academicSessionId])
+}
+
+enum AttendanceSessionStatus {
+  SUBMITTED
+  CANCELLED
+}
+
+model AttendanceSession {
+  id                String                  @id @default(uuid())
+  academicSession   AcademicSession         @relation(fields: [academicSessionId], references: [id])
+  academicSessionId String
+  semester          Int // semester number, always equal to semesterRef.number (kept for older readers)
+  semesterRef       Semester?               @relation(fields: [semesterId], references: [id])
+  semesterId        String?
+  department        Department?             @relation(fields: [departmentId], references: [id])
+  departmentId      String?
+  program           Program?                @relation(fields: [programId], references: [id])
+  programId         String?
+  subject           Subject                 @relation(fields: [subjectId], references: [id])
+  subjectId         String
+  section           Section                 @relation(fields: [sectionId], references: [id])
+  sectionId         String
+  // The teacher the class belongs to (may differ from recordedBy when an HOD/admin covers).
+  faculty           Faculty?                @relation(fields: [facultyId], references: [id])
+  facultyId         String?
+  // Whoever actually recorded this session - Faculty, HOD, Principal, or an admin.
+  // Deliberately a User reference, not Faculty, so it isn't blocked for roles
+  // (Principal, Univ Admin) that have no Faculty profile.
+  recordedBy        User                    @relation("AttendanceRecordedBy", fields: [recordedById], references: [id])
+  recordedById      String
+  date              DateTime                @db.Date
+  period            Int // first period number covered (see PeriodDefinition)
+  numberOfClasses   Int                     @default(1) // consecutive periods covered; each counts as one class
+  startTime         String? // "08:00"
+  endTime           String? // "10:00"
+  status            AttendanceSessionStatus @default(SUBMITTED)
+  remarks           String?
+  cancelledBy       User?                   @relation("AttendanceCancelledBy", fields: [cancelledById], references: [id])
+  cancelledById     String?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  records AttendanceRecord[]
+  slots   AttendanceSlot[]
+
+  // Duplicate prevention lives in AttendanceSlot (one row per period covered, unique on
+  // section + subject + date + period), which also handles multi-period overlap. The original
+  // session-level unique key was replaced by this plain index because a CANCELLED session must
+  // not keep blocking the class from being recorded again.
+  @@index([sectionId, subjectId, date, period])
+  @@index([recordedById, date])
+  @@index([academicSessionId, semester])
+  @@index([academicSessionId, semesterId, programId, sectionId, date])
+  @@index([departmentId, date])
+  @@index([facultyId, date])
+  @@index([subjectId, date])
+  @@index([sectionId, date])
+}
+
+/// One row per period an AttendanceSession covers. The unique key makes it impossible -
+/// even under concurrent submits - to record the same class twice, including partially
+/// overlapping multi-period sessions.
+model AttendanceSlot {
+  id                  String            @id @default(uuid())
+  attendanceSession   AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
+  attendanceSessionId String
+  section             Section           @relation(fields: [sectionId], references: [id])
+  sectionId           String
+  subject             Subject           @relation(fields: [subjectId], references: [id])
+  subjectId           String
+  date                DateTime          @db.Date
+  periodNumber        Int
+
+  @@unique([sectionId, subjectId, date, periodNumber])
+  @@index([attendanceSessionId])
+}
+
+model AttendanceRecord {
+  id                  String             @id @default(uuid())
+  attendanceSession   AttendanceSession  @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
+  attendanceSessionId String
+  student             Student            @relation(fields: [studentId], references: [id])
+  studentId           String
+  // The placement that was true when attendance was taken. Later promotion never rewrites this.
+  enrollment          StudentEnrollment? @relation(fields: [enrollmentId], references: [id])
+  enrollmentId        String?
+  status              AttendanceStatus   @default(ABSENT)
+  remarks             String?
+  markedBy            User?              @relation("AttendanceMarkedBy", fields: [markedById], references: [id])
+  markedById          String?
+  markedAt            DateTime           @default(now())
+  updatedAt           DateTime           @default(now()) @updatedAt
+
+  edits AttendanceEdit[]
+
+  @@unique([attendanceSessionId, studentId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([studentId, attendanceSessionId, status])
+}
+
+model AttendanceEdit {
+  id             String           @id @default(uuid())
+  record         AttendanceRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  recordId       String
+  previousStatus AttendanceStatus
+  newStatus      AttendanceStatus
+  editedBy       User             @relation(fields: [editedById], references: [id])
+  editedById     String
+  reason         String
+  createdAt      DateTime         @default(now())
+
+  @@index([recordId])
+}
+
+model AttendancePolicy {
+  id                    String  @id @default(uuid())
+  minimumPercentage     Int     @default(75)
+  warningPercentage     Int     @default(75)
+  criticalPercentage    Int     @default(65)
+  defaultStatusPresent  Boolean @default(false) // false = default ABSENT (safer)
+  countExcusedAsPresent Boolean @default(true)
+  allowFutureAttendance Boolean @default(false) // allow pre-marking classes that haven't happened
+  enforceSessionDates   Boolean @default(true) // date must fall inside the academic session
+  maxClassesPerSession  Int     @default(5) // "Number of classes" upper bound
+  facultyEditWindowDays Int     @default(7) // days after the class a faculty member may still edit
+  singleton             Boolean @unique @default(true) // ensures only one policy row
+}
+
+// ============================================================
+// EXAMINATION
+// ============================================================
+
+enum ExamType {
+  INTERNAL
+  EXTERNAL
+  PRACTICAL
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model Exam {
+  id         String     @id @default(uuid())
+  title      String
+  subject    Subject    @relation(fields: [subjectId], references: [id])
+  subjectId  String
+  examType   ExamType
+  examDate   DateTime
+  totalMarks Int
+  status     ExamStatus @default(DRAFT)
+  createdAt  DateTime   @default(now())
+
+  marks Marks[]
+
+  @@index([subjectId])
+}
+
+model Marks {
+  id            String   @id @default(uuid())
+  exam          Exam     @relation(fields: [examId], references: [id])
+  examId        String
+  student       Student  @relation(fields: [studentId], references: [id])
+  studentId     String
+  marksObtained Decimal  @db.Decimal(6, 2)
+  enteredBy     Faculty  @relation(fields: [enteredById], references: [id])
+  enteredById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([examId, studentId])
+  @@index([studentId])
+}
+
+// ============================================================
+// FEES
+// ============================================================
+
+enum FeeType {
+  TUITION
+  EXAMINATION
+  HOSTEL
+  TRANSPORT
+  OTHER
+}
+
+enum FeeStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+model Fee {
+  id        String    @id @default(uuid())
+  student   Student   @relation(fields: [studentId], references: [id])
+  studentId String
+  feeType   FeeType
+  amountDue Decimal   @db.Decimal(10, 2)
+  dueDate   DateTime
+  status    FeeStatus @default(PENDING)
+  createdAt DateTime  @default(now())
+
+  payments Payment[]
+
+  @@index([studentId])
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  fee           Fee      @relation(fields: [feeId], references: [id])
+  feeId         String
+  amountPaid    Decimal  @db.Decimal(10, 2)
+  method        String // "CASH", "CARD", "UPI", "BANK_TRANSFER"
+  receiptNumber String   @unique
+  paidAt        DateTime @default(now())
+
+  @@index([feeId])
+}
+
+// ============================================================
+// TIMETABLE
+// ============================================================
+
+enum DayOfWeek {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+}
+
+model TimetableSlot {
+  id        String    @id @default(uuid())
+  subject   Subject   @relation(fields: [subjectId], references: [id])
+  subjectId String
+  faculty   Faculty   @relation(fields: [facultyId], references: [id])
+  facultyId String
+  section   Section   @relation(fields: [sectionId], references: [id])
+  sectionId String
+  dayOfWeek DayOfWeek
+  startTime String // "09:00"
+  endTime   String // "10:00"
+  room      String?
+  createdAt DateTime  @default(now())
+
+  @@index([sectionId, dayOfWeek])
+  @@index([facultyId, dayOfWeek])
+}
+
+// ============================================================
+// LIBRARY
+// ============================================================
+
+enum BookIssueStatus {
+  ISSUED
+  RETURNED
+  OVERDUE
+}
+
+model Book {
+  id              String    @id @default(uuid())
+  title           String
+  author          String
+  isbn            String    @unique
+  publisher       String?
+  category        String?
+  totalCopies     Int       @default(1)
+  availableCopies Int       @default(1)
+  createdAt       DateTime  @default(now())
+  deletedAt       DateTime?
+
+  issues BookIssue[]
+}
+
+model BookIssue {
+  id         String          @id @default(uuid())
+  book       Book            @relation(fields: [bookId], references: [id])
+  bookId     String
+  student    Student         @relation(fields: [studentId], references: [id])
+  studentId  String
+  issuedAt   DateTime        @default(now())
+  dueDate    DateTime
+  returnedAt DateTime?
+  fineAmount Decimal         @default(0) @db.Decimal(8, 2)
+  status     BookIssueStatus @default(ISSUED)
+
+  @@index([studentId])
+  @@index([bookId])
+}
+
+// ============================================================
+// PLACEMENT
+// ============================================================
+
+enum DriveStatus {
+  OPEN
+  CLOSED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SHORTLISTED
+  SELECTED
+  REJECTED
+}
+
+model PlacementCompany {
+  id        String   @id @default(uuid())
+  name      String
+  website   String?
+  location  String?
+  createdAt DateTime @default(now())
+
+  drives PlacementDrive[]
+}
+
+model PlacementDrive {
+  id                   String           @id @default(uuid())
+  company              PlacementCompany @relation(fields: [companyId], references: [id])
+  companyId            String
+  jobRole              String
+  description          String?
+  eligibleDepartment   Department?      @relation(fields: [eligibleDepartmentId], references: [id])
+  eligibleDepartmentId String?
+  minCgpa              Decimal?         @db.Decimal(4, 2)
+  salaryPackage        String?
+  driveDate            DateTime
+  status               DriveStatus      @default(OPEN)
+  createdAt            DateTime         @default(now())
+
+  applications Application[]
+
+  @@index([companyId])
+}
+
+model Application {
+  id        String            @id @default(uuid())
+  drive     PlacementDrive    @relation(fields: [driveId], references: [id])
+  driveId   String
+  student   Student           @relation(fields: [studentId], references: [id])
+  studentId String
+  status    ApplicationStatus @default(APPLIED)
+  appliedAt DateTime          @default(now())
+
+  @@unique([driveId, studentId])
+  @@index([studentId])
+}
+
+// ============================================================
+// NOTICES & NOTIFICATIONS
+// ============================================================
+
+enum NoticeCategory {
+  ACADEMIC
+  EXAMINATION
+  PLACEMENT
+  GENERAL
+  EMERGENCY
+  DEPARTMENT
+}
+
+enum NoticePriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+model Notice {
+  id                 String         @id @default(uuid())
+  title              String
+  content            String
+  category           NoticeCategory @default(GENERAL)
+  priority           NoticePriority @default(NORMAL)
+  targetRole         String? // null = everyone
+  targetDepartmentId String?
+  postedBy           User           @relation(fields: [postedById], references: [id])
+  postedById         String
+  expiresAt          DateTime?
+  createdAt          DateTime       @default(now())
+
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  NOTICE
+  FEE
+  ATTENDANCE
+  EXAM
+  LEAVE
+  GRIEVANCE
+  PLACEMENT
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  title     String
+  message   String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+}
+
+// ============================================================
+// LEAVE MANAGEMENT
+// ============================================================
+
+enum LeaveType {
+  SICK
+  CASUAL
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model LeaveRequest {
+  id           String      @id @default(uuid())
+  applicant    User        @relation("LeaveApplicant", fields: [applicantId], references: [id])
+  applicantId  String
+  leaveType    LeaveType
+  reason       String
+  startDate    DateTime
+  endDate      DateTime
+  status       LeaveStatus @default(PENDING)
+  decidedBy    User?       @relation("LeaveDecider", fields: [decidedById], references: [id])
+  decidedById  String?
+  decisionNote String?
+  createdAt    DateTime    @default(now())
+
+  @@index([applicantId])
+  @@index([status])
+}
+
+// ============================================================
+// GRIEVANCE
+// ============================================================
+
+enum ComplaintCategory {
+  ACADEMIC
+  HOSTEL
+  TECHNICAL
+  INFRASTRUCTURE
+  OTHER
+}
+
+enum ComplaintPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model Complaint {
+  id             String            @id @default(uuid())
+  raisedBy       User              @relation(fields: [raisedById], references: [id])
+  raisedById     String
+  category       ComplaintCategory
+  subject        String
+  description    String
+  priority       ComplaintPriority @default(MEDIUM)
+  status         ComplaintStatus   @default(OPEN)
+  resolutionNote String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([raisedById])
+  @@index([status])
+}
+
+// ============================================================
+// DOCUMENT VAULT
+// ============================================================
+
+enum DocumentCategory {
+  CERTIFICATE
+  MARKSHEET
+  ID_PROOF
+  RESUME
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model Document {
+  id         String           @id @default(uuid())
+  owner      User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId    String
+  title      String
+  category   DocumentCategory @default(OTHER)
+  fileUrl    String // Cloudinary secure_url
+  publicId   String // Cloudinary public_id, needed to delete/replace
+  status     DocumentStatus   @default(PENDING)
+  reviewNote String?
+  uploadedAt DateTime         @default(now())
+
+  @@index([ownerId])
+}
+
+// ============================================================
+// PASSWORD RESET (email OTP)
+// ============================================================
+
+model PasswordResetOtp {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  otpHash   String
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ============================================================
+// HOSTEL MANAGEMENT
+// ============================================================
+
+enum RoomAllocationStatus {
+  ACTIVE
+  VACATED
+}
+
+model Hostel {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  warden    String? // display name, kept simple - not a User FK to avoid over-coupling
+  createdAt DateTime @default(now())
+
+  rooms Room[]
+}
+
+model Room {
+  id         String   @id @default(uuid())
+  hostel     Hostel   @relation(fields: [hostelId], references: [id])
+  hostelId   String
+  roomNumber String
+  capacity   Int      @default(2)
+  createdAt  DateTime @default(now())
+
+  allocations RoomAllocation[]
+
+  @@unique([hostelId, roomNumber])
+}
+
+model RoomAllocation {
+  id          String               @id @default(uuid())
+  room        Room                 @relation(fields: [roomId], references: [id])
+  roomId      String
+  student     Student              @relation(fields: [studentId], references: [id])
+  studentId   String
+  status      RoomAllocationStatus @default(ACTIVE)
+  allocatedAt DateTime             @default(now())
+  vacatedAt   DateTime?
+
+  @@index([roomId])
+  @@index([studentId])
+}
