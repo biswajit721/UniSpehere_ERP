@@ -13,15 +13,10 @@ import {
   verifyOtpSchema,
 } from "./auth.validation";
 
-// Determine if running in production
-const isProduction = env.nodeEnv === "production" || process.env.NODE_ENV === "production";
-
-// Cross-domain cookies between vercel.app and onrender.com require:
-// sameSite: "none" AND secure: true
 const cookieOptions = {
   httpOnly: true,
-  secure: isProduction,
-  sameSite: (isProduction ? "none" : "lax") as "none" | "lax",
+  secure: env.cookieSecure,
+  sameSite: "lax" as const,
 };
 
 export const authController = {
