@@ -13,10 +13,16 @@ import {
   verifyOtpSchema,
 } from "./auth.validation";
 
+// Cross-site deployments (Vercel frontend + Render backend are on different domains) require
+// SameSite=None so the browser will attach the cookie on cross-origin requests — but SameSite=None
+// is only honoured by browsers when the cookie is also Secure (HTTPS-only). Locally, frontend and
+// backend share the same site (just different ports on localhost), so plain Lax works and doesn't
+// force you onto HTTPS for local development. This ties the two together via COOKIE_SECURE so one
+// env var switches correctly between the two environments.
 const cookieOptions = {
   httpOnly: true,
   secure: env.cookieSecure,
-  sameSite: "lax" as const,
+  sameSite: (env.cookieSecure ? "none" : "lax") as "none" | "lax",
 };
 
 export const authController = {

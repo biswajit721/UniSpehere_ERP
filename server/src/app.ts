@@ -33,6 +33,13 @@ import usersRoutes from "./modules/users/users.routes";
 
 const app = express();
 
+// Render (and most PaaS providers) put the app behind a reverse proxy that terminates TLS.
+// Without this, Express sees every request as coming from the proxy's internal IP, so
+// express-rate-limit would key its limits off ONE shared IP for every visitor instead of
+// per-client. "1" trusts exactly one hop (the platform's own proxy) - the standard, safe
+// setting for a single-proxy PaaS deployment.
+app.set("trust proxy", 1);
+
 app.use(helmet());
 app.use(
   cors({
