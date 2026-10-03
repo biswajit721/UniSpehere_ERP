@@ -1,6 +1,6 @@
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import express from "express";
+import express, { Request, Response } from "express"; // <-- Added Request and Response
 import helmet from "helmet";
 import morgan from "morgan";
 import { env } from "./config/env";
@@ -34,10 +34,6 @@ import usersRoutes from "./modules/users/users.routes";
 const app = express();
 
 // Render (and most PaaS providers) put the app behind a reverse proxy that terminates TLS.
-// Without this, Express sees every request as coming from the proxy's internal IP, so
-// express-rate-limit would key its limits off ONE shared IP for every visitor instead of
-// per-client. "1" trusts exactly one hop (the platform's own proxy) - the standard, safe
-// setting for a single-proxy PaaS deployment.
 app.set("trust proxy", 1);
 
 app.use(helmet());
@@ -53,7 +49,8 @@ app.use(cookieParser());
 app.use(morgan(env.nodeEnv === "development" ? "dev" : "combined"));
 app.use("/api", apiRateLimiter);
 
-app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+// Explicitly typed parameters to prevent TS7006 implicit 'any' errors
+app.get("/api/health", (_req: Request, res: Response) => res.json({ status: "ok" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
