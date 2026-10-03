@@ -17,7 +17,7 @@
     "test:attendance": "ts-node src/scripts/attendanceE2E.ts"
   },
   "dependencies": {
-    "@google/genai": "^2.24.0",
+    "@google/genai": "^2.26.0",
     "@prisma/client": "^5.20.0",
     "bcrypt": "^5.1.1",
     "cloudinary": "^2.5.1",
